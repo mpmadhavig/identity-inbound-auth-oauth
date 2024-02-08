@@ -292,7 +292,8 @@ public class AuthorizationHandlerManager {
             authzReqMsgCtx.setAuthorizedInternalScopes(authorizedInternalScopes);
         } else {
             // Engage new scope validator
-            authorizedScopes = getAuthorizedScopes(authzReqMsgCtx);
+            authorizedScopes = new ArrayList<>();
+            authorizedScopes.add(OAuth2Util.OPENID_SCOPE);
             removeAuthorizedScopesFromRequestedScopes(authzReqMsgCtx, authorizedScopes);
         }
         boolean isDropUnregisteredScopes = OAuthServerConfiguration.getInstance().isDropUnregisteredScopes();

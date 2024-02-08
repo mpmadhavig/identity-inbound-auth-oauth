@@ -87,7 +87,6 @@ import org.wso2.carbon.identity.oauth.par.core.ParAuthService;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ScopeConsentException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ScopeException;
-import org.wso2.carbon.identity.oauth2.IdentityOAuth2ScopeServerException;
 import org.wso2.carbon.identity.oauth2.OAuth2ScopeService;
 import org.wso2.carbon.identity.oauth2.OAuth2Service;
 import org.wso2.carbon.identity.oauth2.OAuth2TokenValidationService;
@@ -102,7 +101,6 @@ import org.wso2.carbon.identity.oauth2.model.OAuth2Parameters;
 import org.wso2.carbon.identity.oauth2.model.OAuth2ScopeConsentResponse;
 import org.wso2.carbon.identity.oauth2.scopeservice.OAuth2Resource;
 import org.wso2.carbon.identity.oauth2.scopeservice.ScopeMetadataService;
-import org.wso2.carbon.identity.oauth2.util.AuthzUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.openidconnect.OIDCRequestObjectUtil;
 import org.wso2.carbon.identity.openidconnect.RequestObjectBuilder;
@@ -913,7 +911,7 @@ public class EndpointUtil {
             if (nonOidcScopeList.isEmpty()) {
                 return null;
             }
-            List<OAuth2Resource> scopesMetaData = scopeMetadataService.getMetadata(nonOidcScopeList);
+            List<OAuth2Resource> scopesMetaData = new ArrayList<>();
             String scopeMetadata = new Gson().toJson(scopesMetaData);
             return "scopeMetadata=" + URLEncoder.encode(scopeMetadata, UTF_8);
         } catch (Exception e) {
@@ -1316,19 +1314,17 @@ public class EndpointUtil {
     private static Set<String> getRegisteredScopes(Set<String> requestedScopes, String tenantDomain)
             throws OAuthSystemException {
 
-        try {
-            String requestedScopesStr = StringUtils.join(requestedScopes, " ");
-            Set<String> registeredScopes = new HashSet<>();
-            Set<Scope> registeredScopeSet = oAuth2ScopeService.getScopes(null, null, true, requestedScopesStr);
-            registeredScopeSet.forEach(scope -> registeredScopes.add(scope.getName()));
-            if (!AuthzUtil.isLegacyAuthzRuntime()) {
-                List<String> registeredAPIScopes = getRegisteredAPIScopes(requestedScopes, tenantDomain);
-                registeredScopes.addAll(registeredAPIScopes);
-            }
-            return registeredScopes;
-        } catch (IdentityOAuth2ScopeServerException | IdentityOAuth2Exception e) {
-            throw new OAuthSystemException("Error occurred while retrieving registered scopes.", e);
-        }
+        // String requestedScopesStr = StringUtils.join(requestedScopes, " ");
+        Set<String> registeredScopes = new HashSet<>();
+        Set<Scope> registeredScopeSet = new HashSet<>();
+        Scope openidScope = new Scope(
+                OPENID,
+                "Open ID",
+                new ArrayList<>(),
+                "Indicate the use of OpenID Connect protocol.");
+        registeredScopeSet.add(openidScope);
+        registeredScopeSet.forEach(scope -> registeredScopes.add(scope.getName()));
+        return registeredScopes;
     }
 
     /**

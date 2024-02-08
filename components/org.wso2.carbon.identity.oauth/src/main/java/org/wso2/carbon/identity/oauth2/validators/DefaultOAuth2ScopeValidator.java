@@ -175,7 +175,7 @@ public class DefaultOAuth2ScopeValidator {
             requestedScopes.addAll(getInternalScopes(tenantDomain));
             requestedScopes.addAll(getConsoleScopes(tenantDomain));
         }
-        List<AuthorizedScopes> authorizedScopesList = getAuthorizedScopes(appId, tenantDomain);
+        List<AuthorizedScopes> authorizedScopesList = new ArrayList<>();
         List<ScopeValidationHandler> scopeValidationHandlers =
                 OAuthComponentServiceHolder.getInstance().getScopeValidationHandlers();
         Map<String, List<String>> validatedScopesByHandler = new HashMap<>();
