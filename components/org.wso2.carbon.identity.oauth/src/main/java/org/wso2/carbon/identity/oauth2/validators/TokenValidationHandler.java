@@ -687,7 +687,7 @@ public class TokenValidationHandler {
             OAuthAppDO oAuthAppDO = OAuth2Util.getAppInformationByClientId(accessTokenDO.getConsumerKey(),
                     tenantDomain);
 
-            return Boolean.TRUE.equals(oAuthAppDO.isOmitUsernameInIntrospectionRespForAppTokens());
+            return oAuthAppDO.isOmitUsernameInIntrospectionRespForAppTokens();
 
         } catch (Exception e) {
             throw new IdentityOAuth2Exception("Error occurred while retrieving OAuth2 application data for client id:" +
