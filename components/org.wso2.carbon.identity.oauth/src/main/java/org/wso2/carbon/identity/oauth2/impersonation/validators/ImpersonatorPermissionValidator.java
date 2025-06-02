@@ -21,10 +21,12 @@ package org.wso2.carbon.identity.oauth2.impersonation.validators;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.authz.OAuthAuthzReqMessageContext;
 import org.wso2.carbon.identity.oauth2.impersonation.models.ImpersonationContext;
 import org.wso2.carbon.identity.oauth2.impersonation.models.ImpersonationRequestDTO;
+import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.oauth2.validators.DefaultOAuth2ScopeValidator;
 
 import java.util.List;
@@ -68,13 +70,29 @@ public class ImpersonatorPermissionValidator implements ImpersonationValidator {
         ImpersonationRequestDTO impersonationRequestDTO = impersonationContext.getImpersonationRequestDTO();
         OAuthAuthzReqMessageContext authzReqMessageContext = impersonationRequestDTO.getoAuthAuthzReqMessageContext();
 
-        String tenantDomain = authzReqMessageContext.getAuthorizationReqDTO().getTenantDomain();
+        String subjectUserId = impersonationRequestDTO.getSubject();
+        AuthenticatedUser impersonatee = impersonationRequestDTO.getImpersonator();
+        String tenantDomain = impersonatee.getTenantDomain();
+        String userAccessingOrg = impersonatee.getAccessingOrganization();
+        String userResidentOrg = impersonatee.getUserResidentOrganization();
+        AuthenticatedUser impersonatingUser;
+        if (userAccessingOrg != null && userResidentOrg != null) {
+            impersonatingUser = OAuth2Util.getAuthenticatedUser(subjectUserId, tenantDomain,
+                    userAccessingOrg, userResidentOrg, impersonationRequestDTO.getClientId());
+        } else {
+            impersonatingUser = OAuth2Util.getAuthenticatedUser(subjectUserId, tenantDomain,
+                    impersonationRequestDTO.getClientId());
+        }
+
+        authzReqMessageContext.getAuthorizationReqDTO().setUser(impersonatingUser);
+
         String clientId = authzReqMessageContext.getAuthorizationReqDTO().getConsumerKey();
         authzReqMessageContext.getAuthorizationReqDTO().setScopes(authzReqMessageContext.getRequestedScopes());
         List<String> authorizedScopes = scopeValidator.validateScope(authzReqMessageContext);
         if (authorizedScopes.contains(IMPERSONATION_SCOPE_NAME) ||
                 authorizedScopes.contains(IMPERSONATION_ORG_SCOPE_NAME)) {
             impersonationContext.setValidated(true);
+            authzReqMessageContext.getAuthorizationReqDTO().setUser(impersonatee);
         } else {
             String errorMessage = String.format("Authenticated user : %s doesn't have impersonation permission for " +
                             "client :%s in the tenant %s.",
@@ -82,6 +100,7 @@ public class ImpersonatorPermissionValidator implements ImpersonationValidator {
                     clientId, tenantDomain);
             impersonationContext.setValidated(false);
             impersonationContext.setValidationFailureErrorMessage(errorMessage);
+            authzReqMessageContext.getAuthorizationReqDTO().setUser(impersonatee);
             LOG.debug(errorMessage);
         }
         return impersonationContext;

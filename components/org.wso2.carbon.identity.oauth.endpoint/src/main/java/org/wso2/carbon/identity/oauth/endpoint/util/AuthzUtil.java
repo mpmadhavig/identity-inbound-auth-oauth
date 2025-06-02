@@ -1218,24 +1218,6 @@ public class AuthzUtil {
             String impersonator = authnResult.getSubject().getAuthenticatedSubjectIdentifier();
             oAuthMessage.setProperty(IMPERSONATING_ACTOR, impersonator);
             authzReqMsgCtx.setImpersonationRequest(true);
-            // Set AuthenticationResult authenticated user as impersonatee.
-            boolean isFederatedUser = impersonationContext.getImpersonationRequestDTO().getImpersonator()
-                    .isFederatedUser();
-            String subjectAccessingOrganization = impersonationContext.getImpersonationRequestDTO()
-                    .getImpersonator().getAccessingOrganization();
-            String subjectResidentOrganization = impersonationContext.getImpersonationRequestDTO()
-                    .getImpersonator().getUserResidentOrganization();
-            String tenantDomain = impersonationContext.getImpersonationRequestDTO().getTenantDomain();
-            AuthenticatedUser impersonatedUser = null;
-            if (isFederatedUser && subjectAccessingOrganization != null && subjectResidentOrganization != null) {
-                impersonatedUser = OAuth2Util.getAuthenticatedUser(impersonatedSubject, tenantDomain,
-                        subjectAccessingOrganization, subjectResidentOrganization,
-                        impersonationContext.getImpersonationRequestDTO().getClientId());
-            } else {
-                impersonatedUser = OAuth2Util.getAuthenticatedUser(impersonatedSubject, tenantDomain,
-                        impersonationContext.getImpersonationRequestDTO().getClientId());
-            }
-            authnResult.setSubject(impersonatedUser);
         } else {
             removeImpersonationScope(impersonationContext);
             authzReqMsgCtx.addProperty(IMPERSONATION_VALIDATION_REQUEST, false);

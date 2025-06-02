@@ -69,25 +69,9 @@ public class SubjectScopeValidator implements ImpersonationValidator {
         OAuthAuthzReqMessageContext authzReqMessageContext = impersonationRequestDTO.getoAuthAuthzReqMessageContext();
         authzReqMessageContext.getAuthorizationReqDTO().setScopes(authzReqMessageContext.getRequestedScopes());
 
-        String subjectUserId = impersonationRequestDTO.getSubject();
-        AuthenticatedUser impersonator = impersonationRequestDTO.getImpersonator();
-        String tenantDomain = impersonator.getTenantDomain();
-        String userAccessingOrg = impersonator.getAccessingOrganization();
-        String userResidentOrg = impersonator.getUserResidentOrganization();
-        AuthenticatedUser subjectUser;
-        if (StringUtils.isNotBlank(userAccessingOrg) && StringUtils.isNotBlank(userResidentOrg)) {
-            subjectUser = OAuth2Util.getAuthenticatedUser(subjectUserId, tenantDomain,
-                    userAccessingOrg, userResidentOrg, impersonationRequestDTO.getClientId());
-        } else {
-            subjectUser = OAuth2Util.getAuthenticatedUser(subjectUserId, tenantDomain,
-                    impersonationRequestDTO.getClientId());
-        }
         // Switching end-user as authenticated user to validate scopes.
-        authzReqMessageContext.getAuthorizationReqDTO().setUser(subjectUser);
         List<String> authorizedScopes = scopeValidator.validateScope(authzReqMessageContext);
         authzReqMessageContext.setApprovedScope(authorizedScopes.toArray(new String[0]));
-        // Switching impersonator as authenticated user back.
-        authzReqMessageContext.getAuthorizationReqDTO().setUser(impersonator);
 
         impersonationContext.setValidated(true);
         return impersonationContext;
