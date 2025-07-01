@@ -73,6 +73,7 @@ import java.util.regex.Pattern;
 import static org.apache.commons.collections.MapUtils.isEmpty;
 import static org.apache.commons.collections.MapUtils.isNotEmpty;
 import static org.apache.commons.lang.StringUtils.isNotEmpty;
+import static org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants.ORGANIZATION_LOGIN_IDP_NAME;
 import static org.wso2.carbon.identity.core.util.IdentityUtil.isTokenLoggable;
 
 /**
@@ -240,7 +241,13 @@ public class ClaimUtil {
                         FrameworkUtils.endTenantFlow();
                     }
                 } else {
-                    realm = getUserRealm(null, userTenantDomain);
+                    // For claim resolving during sub organization impersonation.
+                    if (authenticatedUser.isFederatedUser()
+                            && ORGANIZATION_LOGIN_IDP_NAME.equals(authenticatedUser.getFederatedIdPName())) {
+                        realm = getUserRealm(null, authenticatedUser.getUserResidentOrganization());
+                    } else {
+                        realm = getUserRealm(null, userTenantDomain);
+                    }
                     userClaims = getUserClaimsFromUserStoreWithResolvedRoles(authenticatedUser, serviceProvider,
                             userId, realm, claimURIList);
                 }
