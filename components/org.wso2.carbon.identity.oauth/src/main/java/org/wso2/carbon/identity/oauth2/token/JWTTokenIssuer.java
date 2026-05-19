@@ -36,11 +36,15 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.oltu.oauth2.common.exception.OAuthSystemException;
 import org.wso2.carbon.context.PrivilegedCarbonContext;
+import org.wso2.carbon.identity.application.authentication.framework.AuthenticationMethodNameTranslator;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.base.IdentityConstants;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCache;
+import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCacheEntry;
+import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCacheKey;
 import org.wso2.carbon.identity.oauth.common.OAuthConstants;
 import org.wso2.carbon.identity.oauth.common.exception.InvalidOAuthClientException;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
@@ -65,21 +69,26 @@ import java.security.Key;
 import java.security.cert.Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.IDP_SESSION_KEY;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCConfigProperties.SUBJECT_TOKEN_EXPIRY_TIME_VALUE;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.RENEW_TOKEN_WITHOUT_REVOKING_EXISTING_ENABLE_CONFIG;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.REQUEST_BINDING_TYPE;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.UserType.APPLICATION;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.UserType.APPLICATION_USER;
 import static org.wso2.carbon.identity.oauth2.OAuth2Constants.PREV_ACCESS_TOKEN;
+import static org.wso2.carbon.identity.oauth2.token.handlers.grant.RefreshGrantHandler.SESSION_IDENTIFIER;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.JWT_X5T_ENABLED;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.getPrivateKey;
 
@@ -894,6 +903,8 @@ public class JWTTokenIssuer extends OauthTokenIssuerImpl {
                 getAuthorizedUserType(authAuthzReqMessageContext, tokenReqMessageContext));
         jwtClaimsSetBuilder.expirationTime(calculateTokenExpiryTime(accessTokenLifeTimeInMillis, curTimeInMillis));
 
+        setAuthenticationContextClaims(jwtClaimsSetBuilder, authAuthzReqMessageContext, tokenReqMessageContext);
+
         // This is a spec (openid-connect-core-1_0:2.0) requirement for ID tokens.
         // But we are keeping this in JWT as well.
         jwtClaimsSetBuilder.audience(tokenReqMessageContext != null && tokenReqMessageContext.getAudiences() != null ?
@@ -1179,6 +1190,94 @@ public class JWTTokenIssuer extends OauthTokenIssuerImpl {
 
         AuthenticatedUser authenticatedUser = getAuthenticatedUser(authAuthzReqMessageContext, tokenReqMessageContext);
         return authenticatedUser.getAuthenticatedSubjectIdentifier();
+    }
+
+    private void setAuthenticationContextClaims(JWTClaimsSet.Builder jwtClaimsSetBuilder,
+                                                OAuthAuthzReqMessageContext authAuthzReqMessageContext,
+                                                OAuthTokenReqMessageContext tokenReqMessageContext) {
+
+        String acrValue = null;
+        List<String> amrValues = null;
+        String idpSessionKey = null;
+
+        if (authAuthzReqMessageContext != null) {
+            acrValue = authAuthzReqMessageContext.getAuthorizationReqDTO().getSelectedAcr();
+            String[] amrArray = (String[]) authAuthzReqMessageContext.getAuthorizationReqDTO()
+                    .getProperty(OAuthConstants.AMR);
+            if (ArrayUtils.isNotEmpty(amrArray)) {
+                amrValues = Arrays.asList(amrArray);
+            }
+            idpSessionKey = authAuthzReqMessageContext.getAuthorizationReqDTO().getIdpSessionIdentifier();
+        } else if (tokenReqMessageContext != null) {
+            String authorizationCode = (String) tokenReqMessageContext.getProperty(OAuthConstants.AUTHZ_CODE);
+            if (StringUtils.isNotBlank(authorizationCode)) {
+                AuthorizationGrantCacheKey cacheKey = new AuthorizationGrantCacheKey(authorizationCode);
+                AuthorizationGrantCacheEntry cacheEntry =
+                        AuthorizationGrantCache.getInstance().getValueFromCacheByCode(cacheKey);
+                if (cacheEntry != null) {
+                    acrValue = cacheEntry.getSelectedAcrValue();
+                    amrValues = cacheEntry.getAmrList();
+                    idpSessionKey = cacheEntry.getSessionContextIdentifier();
+                }
+            } else {
+                amrValues = tokenReqMessageContext.getOauth2AccessTokenReqDTO()
+                        .getAuthenticationMethodReferences();
+                Object sessionIdProp = tokenReqMessageContext.getProperty(SESSION_IDENTIFIER);
+                if (sessionIdProp != null) {
+                    idpSessionKey = sessionIdProp.toString();
+                }
+            }
+        }
+
+        if (StringUtils.isNotEmpty(acrValue)) {
+            jwtClaimsSetBuilder.claim(OAuthConstants.ACR, acrValue);
+        }
+        if (amrValues != null && !amrValues.isEmpty()) {
+            List<String> translatedAmr = translateAmrToResponse(amrValues);
+            if (!translatedAmr.isEmpty()) {
+                jwtClaimsSetBuilder.claim(OAuthConstants.AMR, translatedAmr);
+            }
+        }
+        if (StringUtils.isNotBlank(idpSessionKey)) {
+            jwtClaimsSetBuilder.claim(IDP_SESSION_KEY, idpSessionKey);
+        }
+    }
+
+    private List<String> translateAmrToResponse(List<String> internalList) {
+
+        Set<String> result = new LinkedHashSet<>();
+        for (String internalValue : internalList) {
+            List<String> translatedToResponse = translateToResponse(internalValue);
+            if (translatedToResponse.isEmpty()) {
+                continue;
+            }
+            result.addAll(translatedToResponse);
+        }
+        return new ArrayList<>(result);
+    }
+
+    private List<String> translateToResponse(String internalValue) {
+
+        List<String> result = Collections.emptyList();
+        AuthenticationMethodNameTranslator authenticationMethodNameTranslator =
+                OAuth2ServiceComponentHolder.getAuthenticationMethodNameTranslator();
+        if (authenticationMethodNameTranslator != null) {
+            Set<String> externalAmrSet = authenticationMethodNameTranslator
+                    .translateToExternalAmr(internalValue, INBOUND_AUTH2_TYPE);
+            if (externalAmrSet == null || externalAmrSet.isEmpty()) {
+                if (log.isDebugEnabled()) {
+                    log.debug("There was no mapping found to translate AMR from internal to external URI. " +
+                            "Internal Method Reference : " + internalValue);
+                }
+                result = new ArrayList<>();
+                result.add(internalValue);
+            } else if (externalAmrSet.contains(String.valueOf(Character.MIN_VALUE))) {
+                return Collections.emptyList();
+            } else {
+                result = new ArrayList<>(externalAmrSet);
+            }
+        }
+        return result;
     }
 
     private JWTClaimsSet handleCnf(JWTClaimsSet.Builder jwtClaimsSetBuilder,
